@@ -1,34 +1,29 @@
 module Core where
-import           Calc                           ( optimize )
+import           Calc                           ( makeList )
 import           Control.Exception              ( try )
-import           Control.Exception.Base         ( SomeException )
 import           Control.Lens                   ( (#) )
 import           Control.Monad.Error.Class      ( liftEither )
-import           Control.Monad.Except           ( ExceptT(ExceptT)
-                                                , MonadError(catchError)
+import           Control.Monad.Except           ( MonadError(catchError), ExceptT
                                                 )
 import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
 import           Data.Bifunctor                 ( Bifunctor(bimap, first) )
 import           Data.ByteString.Lazy           ( ByteString )
 import qualified Data.ByteString.Lazy          as BS
-import           Data.Csv                       ( FromRecord(parseRecord)
-                                                , HasHeader(NoHeader)
+import           Data.Csv                       ( HasHeader(NoHeader)
                                                 , decode, encode
                                                 )
-import           Data.Vector                    ( Vector )
 import qualified Data.Vector                   as V
 import           Parse                          ( getRow, Result (Result) )
 import           System.Environment             ( getArgs )
 import           Types                          ( AppError
-                                                , AsAppError(..)
-                                                , AsMathError
+                                                
                                                 , AsStartupError
                                                   ( _FileError
                                                   , _NoFileGiven
                                                   , _ParseError
                                                   )
                                                 , DB
-                                                , StartupError(FileError)
+                                                
                                                 , Team
                                                 , makeDB, AsPrintError (_WriteError), getDB
                                                 )
@@ -39,7 +34,7 @@ type App = ExceptT AppError IO ()
 
 app :: App
 app = catchError
-  (startApp >>= readData >>= parseData >>= optimize >>= printResults "./data/output.csv")
+  ((startApp >>= readData >>= parseData) >>= printResults "./data/output.csv" . makeList)
   (liftIO . print)
 
 startApp :: (MonadError e m, MonadIO m, AsStartupError e) => m FilePath

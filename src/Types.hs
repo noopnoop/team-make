@@ -5,7 +5,6 @@
 module Types
   ( Character(..)
   , Team(..)
-  , MathError(..)
   , StartupError(..)
   , PrintError(..)
   , AppError(..)
@@ -13,14 +12,12 @@ module Types
   , getDB
   , makeDB
   , AsAppError(..)
-  , AsMathError(..)
   , AsStartupError(..)
   , AsPrintError(..)
   ) where
 import           Control.Exception              ( SomeException )
 import           Control.Lens                   ( makeClassyPrisms )
 import           GHC.Exts                       ( sortWith )
-import GHC.Generics (Generic)
 
 data Character = Albedo
   | Aloy
@@ -83,13 +80,9 @@ getDB (DB x) = x
 makeDB :: [(a, Float)] -> DB a
 makeDB = DB . reverse . sortWith snd
 
-data AppError = AppMathError MathError
-  | AppStartupError StartupError
+data AppError =
+    AppStartupError StartupError
   | AppPrintError PrintError
-  deriving (Show)
-
-data MathError = NoAvailablePartner
-  | TeamNotFound String
   deriving (Show)
 
 data StartupError = FileError SomeException
@@ -98,15 +91,11 @@ data StartupError = FileError SomeException
   deriving (Show)
 
 data PrintError = WriteError SomeException
-  deriving (Show)
+  deriving Show
 
-$(makeClassyPrisms ''MathError)
 $(makeClassyPrisms ''StartupError)
 $(makeClassyPrisms ''PrintError)
 $(makeClassyPrisms ''AppError)
-
-instance AsMathError AppError where
-  _MathError = _AppMathError . _MathError
 
 instance AsStartupError AppError where
   _StartupError = _AppStartupError . _StartupError
