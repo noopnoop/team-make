@@ -1,7 +1,4 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE GeneralisedNewtypeDeriving #-}
-{-# LANGUAGE DeriveGeneric #-}
 module Types
   ( Character(..)
   , Team(..)
@@ -14,10 +11,14 @@ module Types
   , AsAppError(..)
   , AsStartupError(..)
   , AsPrintError(..)
+  , Account
   ) where
 import           Control.Exception              ( SomeException )
 import           Control.Lens                   ( makeClassyPrisms )
 import           GHC.Exts                       ( sortWith )
+import Data.Set (Set)
+import qualified Data.Set as Set
+
 
 data Character = Albedo
   | Aloy
@@ -80,12 +81,18 @@ getDB (DB x) = x
 makeDB :: [(a, Float)] -> DB a
 makeDB = DB . reverse . sortWith snd
 
+type Account = Set Character
+
+emptyAccount :: Account
+emptyAccount = Set.empty
+
+
 data AppError =
     AppStartupError StartupError
   | AppPrintError PrintError
   deriving (Show)
 
-data StartupError = FileError SomeException
+data StartupError = ReadError SomeException
   | ParseError String
   | NoFileGiven
   deriving (Show)

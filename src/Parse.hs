@@ -4,19 +4,20 @@ module Parse where
 import           Control.Applicative            ( Alternative((<|>))
                                                 , empty
                                                 )
-import           Data.Csv                       ( FromField(parseField)
+import           Data.Csv                       ( Field
+                                                , FromField(parseField)
                                                 , FromRecord
                                                 , ToField(toField)
-                                                , ToRecord(toRecord), Field
+                                                , ToRecord(toRecord)
                                                 )
 import           Data.String                    ( IsString(fromString) )
+import           Data.Vector                    ( Vector )
 import           GHC.Generics                   ( Generic )
 import           Text.Read                      ( readMaybe )
 import           Types                          ( Character(..)
                                                 , Team(Team)
                                                 )
 import           Util                           ( removeBadChars )
-import Data.Vector (Vector)
 
 newtype DBFloat = DBFloat {
   getFloat :: Float
@@ -46,8 +47,9 @@ newtype Result = Result
   } deriving (Show)
 
 instance ToRecord Result where
-  toRecord (Result ((Team a b c d,Team w x y z),n)) =
-    toRecord (a,b,c,d, " | " :: String , w,x,y,z, " : " :: String, n) :: Vector Field
+  toRecord (Result ((Team a b c d, Team w x y z), n)) =
+    toRecord (a, b, c, d, " | " :: String, w, x, y, z, " : " :: String, n) :: Vector
+        Field
 
 
 -- >>> import Data.Csv

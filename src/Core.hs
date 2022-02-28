@@ -1,58 +1,100 @@
 module Core where
-import           Calc                           ( makeList )
-import           Control.Exception              ( try )
+import           Calc                           ( accountFilter
+                                                , makeList
+                                                )
+import           Conf                           ( Conf(..)
+                                                , HasConf(..)
+                                                , defaultConf
+                                                )
+import           Control.Exception              ( SomeException
+                                                , try
+                                                )
 import           Control.Lens                   ( (#) )
+import           Control.Lens.Getter            ( (^.) )
 import           Control.Monad.Error.Class      ( liftEither )
-import           Control.Monad.Except           ( MonadError(catchError), ExceptT
+import           Control.Monad.Except           ( ExceptT
+                                                , MonadError(catchError)
                                                 )
 import           Control.Monad.IO.Class         ( MonadIO(liftIO) )
+import           Control.Monad.Reader           ( MonadReader(ask)
+                                                , ReaderT
+                                                , asks
+                                                )
 import           Data.Bifunctor                 ( Bifunctor(bimap, first) )
 import           Data.ByteString.Lazy           ( ByteString )
 import qualified Data.ByteString.Lazy          as BS
 import           Data.Csv                       ( HasHeader(NoHeader)
-                                                , decode, encode
+                                                , decode
+                                                , encode, FromRecord, Only (fromOnly)
                                                 )
 import qualified Data.Vector                   as V
-import           Parse                          ( getRow, Result (Result) )
-import           System.Environment             ( getArgs )
+import           Parse                          ( Result(Result)
+                                                , getRow
+                                                )
 import           Types                          ( AppError
-                                                
+                                                , AsAppError
+                                                , AsPrintError(_WriteError)
                                                 , AsStartupError
-                                                  ( _FileError
-                                                  , _NoFileGiven
-                                                  , _ParseError
+                                                  ( _ParseError
+                                                  , _ReadError
                                                   )
                                                 , DB
-                                                
                                                 , Team
-                                                , makeDB, AsPrintError (_WriteError), getDB
+                                                , getDB
+                                                , makeDB, Account
                                                 )
-import           Util                           ( safeHead )
+import Data.Vector (Vector)
+import qualified Data.Set as Set
 
-
-type App = ExceptT AppError IO ()
+type App = ReaderT Conf (ExceptT AppError IO) ()
 
 app :: App
-app = catchError
-  ((startApp >>= readData >>= parseData) >>= printResults "./data/output.csv" . makeList)
-  (liftIO . print)
+app = flip catchError (liftIO . print) $ do
+  (db', acct') <- readData
+  out          <- asks _outputPath
+  db           <- parseData db'
+  printResults out $ makeList db
 
-startApp :: (MonadError e m, MonadIO m, AsStartupError e) => m FilePath
-startApp = do
-  args <- liftIO getArgs
-  liftEither $ safeHead (_NoFileGiven # ()) args
+-- startApp :: (MonadError e m, MonadIO m, AsStartupError e) => m Conf
+-- startApp = do
+--   --args <- liftIO getArgs
+--   --liftEither $ safeHead (_NoFileGiven # ()) args
+--   return defaultConf
+
+getConf :: Monad m => m Conf
+getConf = return defaultConf
 
 readData
-  :: (MonadIO m, AsStartupError e, MonadError e m) => FilePath -> m ByteString
-readData fp =
-  liftEither =<< liftIO (first (_FileError #) <$> try (BS.readFile fp))
+  :: (MonadIO m, AsStartupError e, MonadError e m, HasConf r, MonadReader r m)
+  => m (ByteString, ByteString)
+readData = do
+  env  <- ask
+  db   <- appTry (_ReadError #) (BS.readFile $ env ^. databasePath)
+  acct <- appTry (_ReadError #) (BS.readFile $ env ^. accountPath)
+  return (db, acct)
 
-parseData :: (AsStartupError e, MonadError e m) => ByteString -> m (DB Team)
-parseData =
+appTry
+  :: (MonadIO m, MonadError e m)
+  => (SomeException -> e)
+  -> IO a
+  -> m a
+appTry fn ma = liftEither =<< liftIO (first fn <$> try ma)
+
+parseFile :: (FromRecord a, AsStartupError e, MonadError e m) => (Vector a -> b) -> ByteString -> m b
+parseFile fn =
   liftEither
-    . bimap (_ParseError #) (makeDB . map getRow . V.toList)
+    . bimap (_ParseError #) fn
     . decode NoHeader
 
-printResults :: (MonadIO m, AsPrintError e, MonadError e m) => FilePath -> DB (Team, Team) -> m ()
-printResults fp db =
-  liftEither =<< liftIO (first (_WriteError #) <$> try (BS.writeFile fp $ encode $ Result <$> getDB db))
+parseData :: (AsStartupError e, MonadError e m) => ByteString -> m (DB Team)
+parseData = parseFile $ makeDB . map getRow . V.toList
+
+parseAccount :: (AsStartupError e, MonadError e m) => ByteString -> m Account
+parseAccount = parseFile $ Set.fromList . map fromOnly . V.toList 
+
+printResults
+  :: (MonadIO m, AsPrintError e, MonadError e m)
+  => FilePath
+  -> DB (Team, Team)
+  -> m ()
+printResults fp db = appTry (_WriteError #) (BS.writeFile fp $ encode $ Result <$> getDB db)
