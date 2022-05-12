@@ -29,6 +29,7 @@ dependencies:
 - cassava
 - bytestring
 - vector
+- aeson
 
 library:
   source-dirs: src

@@ -1,17 +1,17 @@
 module Core where
 import           Calc                           ( accountFilter
+                                                , applyMods
+                                                , bestPrimo
+                                                , bestResin
                                                 , makeList
                                                 )
 import           Conf                           ( Conf(..)
                                                 , HasConf(..)
                                                 , defaultConf
-                                                )
-import           Control.Exception              ( SomeException
-                                                , try
+                                                , mkConf
                                                 )
 import           Control.Lens                   ( (#) )
 import           Control.Lens.Getter            ( (^.) )
-import           Control.Monad.Error.Class      ( liftEither )
 import           Control.Monad.Except           ( ExceptT
                                                 , MonadError(catchError)
                                                 )
@@ -20,40 +20,37 @@ import           Control.Monad.Reader           ( MonadReader(ask)
                                                 , ReaderT
                                                 , asks
                                                 )
-import           Data.Bifunctor                 ( Bifunctor(bimap, first) )
 import           Data.ByteString.Lazy           ( ByteString )
-import qualified Data.ByteString.Lazy          as BS
-import           Data.Csv                       ( HasHeader(NoHeader)
-                                                , decode
-                                                , encode, FromRecord, Only (fromOnly)
-                                                )
-import qualified Data.Vector                   as V
-import           Parse                          ( Result(Result)
-                                                , getRow
+import qualified Data.ByteString.Lazy.Char8    as BS
+import           Json                           ( parseJson )
+import           Parse                          ( parseAccount
+                                                , parseData
                                                 )
 import           Types                          ( AppError
-                                                , AsAppError
                                                 , AsPrintError(_WriteError)
-                                                , AsStartupError
-                                                  ( _ParseError
-                                                  , _ReadError
-                                                  )
+                                                , AsStartupError(_ReadError)
                                                 , DB
-                                                , Team
                                                 , getDB
-                                                , makeDB, Account
                                                 )
-import Data.Vector (Vector)
-import qualified Data.Set as Set
+import           Util                           ( appTry )
 
-type App = ReaderT Conf (ExceptT AppError IO) ()
-
-app :: App
+app :: ReaderT Conf (ExceptT AppError IO) ()
 app = flip catchError (liftIO . print) $ do
   (db', acct') <- readData
   out          <- asks _outputPath
-  db           <- parseData db'
-  printResults out $ makeList db
+  useAcct      <- asks _useAccount
+  doMods       <- asks _useModifications
+  jsonData     <- asks _jsonDatabase
+  acct         <- parseAccount acct'
+  alldb        <- if jsonData then parseJson db' else parseData db'
+  let db     = if useAcct then accountFilter acct alldb else alldb
+  let dbmods = if doMods then applyMods acct db else db
+  -- you probably dont want to uncomment this next line but maybe someday itll be useful for something
+  -- let alldbmods = if doMods then applyMods acct alldb else alldb 
+  liftIO $ writeFile out ""
+  printResults out $ makeList dbmods
+  --printResults out $ bestResin acct dbmods
+  printResults out $ bestPrimo acct alldb
 
 -- startApp :: (MonadError e m, MonadIO m, AsStartupError e) => m Conf
 -- startApp = do
@@ -61,8 +58,11 @@ app = flip catchError (liftIO . print) $ do
 --   --liftEither $ safeHead (_NoFileGiven # ()) args
 --   return defaultConf
 
-getConf :: Monad m => m Conf
-getConf = return defaultConf
+getConf :: (MonadIO m, AsStartupError e, MonadError e m) => m Conf
+getConf = mkConf defaultConf
+
+getCmdConf :: (MonadIO m, AsStartupError e, MonadError e m) => m Conf
+getCmdConf = undefined
 
 readData
   :: (MonadIO m, AsStartupError e, MonadError e m, HasConf r, MonadReader r m)
@@ -73,28 +73,10 @@ readData = do
   acct <- appTry (_ReadError #) (BS.readFile $ env ^. accountPath)
   return (db, acct)
 
-appTry
-  :: (MonadIO m, MonadError e m)
-  => (SomeException -> e)
-  -> IO a
-  -> m a
-appTry fn ma = liftEither =<< liftIO (first fn <$> try ma)
-
-parseFile :: (FromRecord a, AsStartupError e, MonadError e m) => (Vector a -> b) -> ByteString -> m b
-parseFile fn =
-  liftEither
-    . bimap (_ParseError #) fn
-    . decode NoHeader
-
-parseData :: (AsStartupError e, MonadError e m) => ByteString -> m (DB Team)
-parseData = parseFile $ makeDB . map getRow . V.toList
-
-parseAccount :: (AsStartupError e, MonadError e m) => ByteString -> m Account
-parseAccount = parseFile $ Set.fromList . map fromOnly . V.toList 
-
 printResults
-  :: (MonadIO m, AsPrintError e, MonadError e m)
+  :: (MonadIO m, AsPrintError e, MonadError e m, Show a)
   => FilePath
-  -> DB (Team, Team)
+  -> DB a
   -> m ()
-printResults fp db = appTry (_WriteError #) (BS.writeFile fp $ encode $ Result <$> getDB db)
+printResults fp db =
+  appTry (_WriteError #) (appendFile fp $ unlines $ show <$> getDB db)

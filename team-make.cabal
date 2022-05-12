@@ -28,6 +28,7 @@ library
       Calc
       Conf
       Core
+      Json
       Parse
       Types
       Util
@@ -36,7 +37,8 @@ library
   hs-source-dirs:
       src
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
     , bytestring
     , cassava
     , containers
@@ -55,7 +57,8 @@ executable team-make-exe
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
     , bytestring
     , cassava
     , containers
@@ -76,7 +79,8 @@ test-suite team-make-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
     , bytestring
     , cassava
     , containers
